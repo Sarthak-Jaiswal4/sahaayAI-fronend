@@ -8,6 +8,7 @@ import { QuickActionCard } from "./QuickActionCard";
 import { WeatherWidget } from "./WeatherWidget";
 import { AccessibilityToolbar } from "./AccessibilityToolbar";
 import { useToast } from "@/hooks/use-toast";
+import { useFarmerStore } from "@/store/useFarmerStore";
 import {
   Sprout,
   CloudRain,
@@ -15,10 +16,12 @@ import {
   Calendar,
   Leaf,
   Settings,
-  UserCircle
+  UserCircle,
+  CloudCog
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useCallPolling } from "@/hooks/call-polling";
 
 // Type declarations for Speech Recognition API
 declare global {
@@ -66,6 +69,7 @@ const QUICK_PROMPTS = [
 export function FarmerVoiceAssistant() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const farmer = useFarmerStore((state) => state.farmer);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -73,6 +77,10 @@ export function FarmerVoiceAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isVoiceActiveRef = useRef(false);
+  const [callId, setCallId] = useState<string | null>(null);
+  const { status, summary } = useCallPolling(callId || undefined);
+
+  console.log("Farmer", farmer);
 
   useEffect(() => {
     // Initialize speech recognition
@@ -173,11 +181,25 @@ export function FarmerVoiceAssistant() {
     }
   }, [toast]);
 
+useEffect(() => {
+  if (!summary) return;
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: `${Date.now()}_summary`,
+      role: "assistant",
+      content: `📩 Call Summary:\n\n${summary}`,
+      timestamp: new Date(),
+    },
+  ]);
+}, [summary]);
+
   const stopVoice = useCallback(async () => {
     setIsVoiceActive(false);
     isVoiceActiveRef.current = false;
     setIsSpeaking(false);
-    
+
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
@@ -198,7 +220,22 @@ export function FarmerVoiceAssistant() {
         const response = await axios.post(`${import.meta.env.VITE_BACKEND_URL}`, {
           query: finalTranscript,
           timestamp: new Date().toISOString(),
+          userId: farmer?.id || "guest"
         });
+
+        const callId = response.data.callId;
+        setCallId(callId);
+
+        // Show call-in-progress message
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString() + "_assistant",
+            role: "assistant",
+            content: "📞 Calling Bhoomi… Please stay on the line. I’ll send you a summary after the call.",
+            timestamp: new Date(),
+          },
+        ]);
 
         // Add assistant response
         if (response.data && response.data.response) {
@@ -223,7 +260,7 @@ export function FarmerVoiceAssistant() {
     } else {
       console.log("No speech detected");
     }
-    
+
     toast({
       title: "Voice Stopped",
       description: `Captured: "${finalTranscript || 'No speech detected'}"`,
@@ -243,7 +280,7 @@ export function FarmerVoiceAssistant() {
   const isConnected = isVoiceActive;
 
   return (
-    <div 
+    <div
       className="min-h-screen min-h-[100dvh] bg-gradient-earth flex flex-col"
       role="application"
       aria-label="Farm Voice Assistant"
@@ -261,7 +298,7 @@ export function FarmerVoiceAssistant() {
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold text-white drop-shadow-lg">
-                Farm Helper
+                SahaayAI
               </h1>
               <p className="text-sm text-white/90 font-medium">
                 Talk to me anytime
@@ -292,7 +329,7 @@ export function FarmerVoiceAssistant() {
                 Just tap what you need or speak to me
               </p>
             </div>
-            
+
             <div
               className="grid grid-cols-2 gap-4"
               role="list"
@@ -363,11 +400,16 @@ export function FarmerVoiceAssistant() {
                 </div>
               )}
               {messages.map((message) => (
-                <ChatMessage 
-                  key={message.id} 
-                  message={message} 
+                <ChatMessage
+                  key={message.id}
+                  message={message}
                 />
               ))}
+              {status && (
+              <p className="text-sm text-center text-gray-600">
+              Call status: {status}
+              </p>
+              )}
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
@@ -408,6 +450,12 @@ export function FarmerVoiceAssistant() {
               </svg>
             </div>
           </div>
+        )}
+
+        {status && (
+          <p className="text-sm text-center text-gray-600">
+            Call status: {status}
+          </p>
         )}
 
         <div className="flex flex-col items-center relative z-10">

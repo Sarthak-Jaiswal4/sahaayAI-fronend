@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useFarmerStore } from "@/store/useFarmerStore";
 
 const COUNTRY_CODES = [
   { code: "+1", country: "US/CA" },
@@ -31,6 +32,7 @@ const COUNTRY_CODES = [
 export default function SignIn() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { login } = useFarmerStore();
   const [showPassword, setShowPassword] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [formData, setFormData] = useState({
@@ -53,6 +55,25 @@ export default function SignIn() {
         code: formData.password,
       });
 
+      // Extract farmer data and token from response
+      const { token, user } = response.data;
+
+      // Save to Zustand store (will auto-persist to localStorage)
+      login(
+        {
+          id: user?._id,
+          username: user?.username || '',
+          email: user?.email || '',
+          phoneNumber: formData.phoneNumber,
+          countryCode: formData.countryCode,
+          languagePreference: user?.language_preference,
+          hasDisability: user?.disability_is,
+          disabilityType: user?.disability_type,
+          answerPreference: user?.answer_preference,
+        },
+        token || ''
+      );
+
       toast({
         title: "Welcome Back! 🌾",
         description: "Redirecting to your dashboard...",
@@ -70,6 +91,7 @@ export default function SignIn() {
       });
     }
   };
+
 
   const handleChange = (field: string, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: field === 'password' ? Number(value) : value }));
